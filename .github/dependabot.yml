@@ -1,14 +1,22 @@
 version: 2
 updates:
-- package-ecosystem: github-actions
-  directory: "/"
-  schedule:
-    interval: daily
-    timezone: Etc/UTC
-  open-pull-requests-limit: 10
-  reviewers:
-  - str4d
-  assignees:
-  - str4d
-  labels:
-  - "A-CI"
+  - package-ecosystem: cargo
+    directory: /
+    pull-request-branch-name:
+      separator: "-"
+    schedule:
+      interval: weekly
+    groups:
+      rust-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
