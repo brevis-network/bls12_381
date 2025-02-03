@@ -9,8 +9,8 @@ use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 use crate::fp::Fp;
 cfg_if! {
     if #[cfg(target_os = "zkvm")] {
-        use pico_sdk::{syscall_bls12381_fp2_addmod, syscall_bls12381_fp2_submod, syscall_bls12381_fp2_mulmod };
-        use pico_sdk::{io::{hint_slice, read_vec}, unconstrained};
+        use pico_patch_libs::{syscall_bls12381_fp2_addmod, syscall_bls12381_fp2_submod, syscall_bls12381_fp2_mulmod };
+        use pico_patch_libs::{io::{hint_slice, read_vec}, unconstrained};
     }
 }
 
@@ -282,7 +282,7 @@ impl Fp2 {
         }
     }
 
-    pub const fn square(&self) -> Fp2 {
+    pub fn square(&self) -> Fp2 {
         cfg_if::cfg_if! {
             if #[cfg(target_os = "zkvm")] {
                 let mut out = self.clone();
@@ -374,7 +374,7 @@ impl Fp2 {
         }
     }
 
-    pub const fn add(&self, rhs: &Fp2) -> Fp2 {
+    pub fn add(&self, rhs: &Fp2) -> Fp2 {
         cfg_if::cfg_if! {
             if #[cfg(target_os = "zkvm")] {
                 let mut out = self.clone();
@@ -408,7 +408,7 @@ impl Fp2 {
         }
     }
 
-    pub const fn sub(&self, rhs: &Fp2) -> Fp2 {
+    pub fn sub(&self, rhs: &Fp2) -> Fp2 {
         cfg_if::cfg_if! {
             if #[cfg(target_os = "zkvm")] {
                 let mut out = self.clone();
@@ -433,7 +433,7 @@ impl Fp2 {
         }
     }
 
-    pub const fn neg(&self) -> Fp2 {
+    pub fn neg(&self) -> Fp2 {
         cfg_if::cfg_if! {
             if #[cfg(target_os = "zkvm")] {
                 let mut out = Fp2::zero();

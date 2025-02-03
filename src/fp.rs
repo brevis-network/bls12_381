@@ -12,8 +12,8 @@ use crate::util::{adc, mac, sbb};
 // Accelerated precompiles for zkvm. Defined directly to prevent circular dependency issues.
 cfg_if! {
     if #[cfg(target_os = "zkvm")] {
-        use pico_sdk::{syscall_bls12381_fp_addmod, syscall_bls12381_fp_submod, syscall_bls12381_fp_mulmod };
-        use pico_sdk::{io::{hint_slice, read_vec}, unconstrained};
+        use pico_patch_libs::{syscall_bls12381_fp_addmod, syscall_bls12381_fp_submod, syscall_bls12381_fp_mulmod };
+        use pico_patch_libs::{io::{hint_slice, read_vec}, unconstrained};
     }
 }
 
@@ -499,7 +499,7 @@ impl Fp {
     }
 
     #[inline]
-    pub const fn add(&self, rhs: &Fp) -> Fp {
+    pub fn add(&self, rhs: &Fp) -> Fp {
         cfg_if::cfg_if! {
             if #[cfg(target_os = "zkvm")] {
                 let mut out = self.clone();
@@ -539,7 +539,7 @@ impl Fp {
     }
 
     #[inline]
-    pub const fn neg(&self) -> Fp {
+    pub fn neg(&self) -> Fp {
         cfg_if::cfg_if! {
             if #[cfg(target_os = "zkvm")] {
                 let mut out = Fp::zero();
@@ -565,7 +565,7 @@ impl Fp {
     }
 
     #[inline]
-    pub const fn sub(&self, rhs: &Fp) -> Fp {
+    pub fn sub(&self, rhs: &Fp) -> Fp {
         cfg_if::cfg_if! {
             if #[cfg(target_os = "zkvm")] {
                 let mut out = self.clone();
@@ -800,7 +800,7 @@ impl Fp {
     }
 
     #[inline]
-    pub const fn mul(&self, rhs: &Fp) -> Fp {
+    pub fn mul(&self, rhs: &Fp) -> Fp {
         cfg_if::cfg_if! {
             if #[cfg(target_os = "zkvm")] {
                 let mut out = self.clone();
@@ -904,7 +904,7 @@ impl Fp {
 
     /// Squares this element.
     #[inline]
-    pub const fn square(&self) -> Self {
+    pub fn square(&self) -> Self {
         cfg_if::cfg_if! {
             if #[cfg(target_os = "zkvm")] {
                 let mut out = self.clone();

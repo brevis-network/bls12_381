@@ -9,8 +9,8 @@ use rand_core::RngCore;
 
 cfg_if! {
     if #[cfg(target_os = "zkvm")] {
-        use pico_sdk::sys_bigint;
-        use pico_sdk::{io::{hint_slice, read_vec}, unconstrained};
+        use pico_patch_libs::sys_bigint;
+        use pico_patch_libs::{io::{hint_slice, read_vec}, unconstrained};
     }
 }
 

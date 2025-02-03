@@ -26,7 +26,7 @@ cfg_if::cfg_if! {
 }
 // Accelerated precompiles for zkvm. Defined directly to prevent circular dependency issues.
 #[cfg(target_os = "zkvm")]
-use pico_sdk::{bls12381::decompress_pubkey, syscall_bls12381_add, syscall_bls12381_double};
+use pico_patch_libs::{bls12381::decompress_pubkey, syscall_bls12381_add, syscall_bls12381_double};
 
 /// This is an element of $\mathbb{G}_1$ represented in the affine coordinate space.
 /// It is ideal to keep elements in this representation to reduce memory usage and

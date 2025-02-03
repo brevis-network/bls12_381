@@ -9,7 +9,7 @@ use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 use rand_core::RngCore;
 
 #[cfg(target_os = "zkvm")]
-use pico_sdk::{
+use pico_patch_libs::{
     io::{hint_slice, read_vec},
     unconstrained,
 };

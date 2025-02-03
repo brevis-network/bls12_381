@@ -75,10 +75,6 @@ default-features = false
 features = ["alloc"]
 optional = true
 
-[target.'cfg(target_os = "zkvm")'.dependencies]
-pico-sdk = { git = "https://github.com/brevis-network/brevis-vm.git", branch = "cli", default-features = false }
-
-
 [features]
 default = ["groups", "pairings", "alloc", "bits"]
 bits = ["ff/bits"]
@@ -87,3 +83,6 @@ pairings = ["groups", "pairing"]
 alloc = ["group/alloc"]
 experimental = ["digest", "hex"]
 nightly = ["subtle/nightly"]
+
+[target.'cfg(target_os = "zkvm")'.dependencies]
+pico-patch-libs = { git = "https://github.com/brevis-network/brevis-vm" }
