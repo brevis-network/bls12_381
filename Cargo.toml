@@ -85,4 +85,4 @@ experimental = ["digest", "hex"]
 nightly = ["subtle/nightly"]
 
 [target.'cfg(target_os = "zkvm")'.dependencies]
-pico-patch-libs = { git = "https://github.com/brevis-network/brevis-vm" }
+pico-patch-libs = { git = "https://github.com/brevis-network/pico.git" }
