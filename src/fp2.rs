@@ -1,18 +1,22 @@
 //! This module implements arithmetic over the quadratic extension field Fp2.
 
-use cfg_if::cfg_if;
 use core::fmt;
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use crate::fp::Fp;
-cfg_if! {
-    if #[cfg(target_os = "zkvm")] {
-        use pico_patch_libs::{syscall_bls12381_fp2_addmod, syscall_bls12381_fp2_submod, syscall_bls12381_fp2_mulmod };
-        use pico_patch_libs::{io::{hint_slice, read_vec}, unconstrained};
-    }
-}
+
+#[cfg(target_os = "zkvm")]
+use {
+    pico_patch_libs::{
+        io::{hint_slice, read_vec},
+        unconstrained,
+    },
+    pico_patch_libs::{
+        syscall_bls12381_fp2_mulmod, syscall_bls12381_fp_addmod, syscall_bls12381_fp_submod,
+    },
+};
 
 #[derive(Copy, Clone)]
 #[repr(C)] // NOTE: this is technically required for ensuring the memory layout used in the zkvm precompiles is valid
@@ -68,7 +72,7 @@ impl ConditionallySelectable for Fp2 {
     }
 }
 
-impl<'a> Neg for &'a Fp2 {
+impl Neg for &Fp2 {
     type Output = Fp2;
 
     #[inline]
@@ -86,29 +90,29 @@ impl Neg for Fp2 {
     }
 }
 
-impl<'a, 'b> Sub<&'b Fp2> for &'a Fp2 {
+impl<'a> Sub<&'a Fp2> for &Fp2 {
     type Output = Fp2;
 
     #[inline]
-    fn sub(self, rhs: &'b Fp2) -> Fp2 {
+    fn sub(self, rhs: &'a Fp2) -> Fp2 {
         self.sub(rhs)
     }
 }
 
-impl<'a, 'b> Add<&'b Fp2> for &'a Fp2 {
+impl<'a> Add<&'a Fp2> for &Fp2 {
     type Output = Fp2;
 
     #[inline]
-    fn add(self, rhs: &'b Fp2) -> Fp2 {
+    fn add(self, rhs: &'a Fp2) -> Fp2 {
         self.add(rhs)
     }
 }
 
-impl<'a, 'b> Mul<&'b Fp2> for &'a Fp2 {
+impl<'a> Mul<&'a Fp2> for &Fp2 {
     type Output = Fp2;
 
     #[inline]
-    fn mul(self, rhs: &'b Fp2) -> Fp2 {
+    fn mul(self, rhs: &'a Fp2) -> Fp2 {
         self.mul(rhs)
     }
 }
@@ -183,6 +187,14 @@ impl Fp2 {
     #[inline]
     #[cfg(target_os = "zkvm")]
     pub fn mul_by_nonresidue_inp(&mut self) {
+        // Multiply a + bu by u + 1, getting
+        // au + a + bu^2 + bu
+        // and because u^2 = -1, we get
+        // (a - b) + (a + b)u
+
+        // let tmp = self.c0 + self.c1;
+        // self.c0.sub_inp(&self.c1);
+        // self.c1 = tmp;
         self.mul_inp(&Fp2::non_residue());
     }
 
@@ -222,6 +234,7 @@ impl Fp2 {
     }
 
     #[inline]
+    // This function panics when the input is non-canonical, unlike `Fp`'s `from_bytes`.
     pub fn from_bytes(bytes: &[u8; 96]) -> CtOption<Fp2> {
         let c0 = Fp::from_bytes(&bytes[..48].try_into().unwrap());
         let c1 = Fp::from_bytes(&bytes[48..].try_into().unwrap());
@@ -251,8 +264,8 @@ impl Fp2 {
     pub fn square_inp(&mut self) {
         unsafe {
             syscall_bls12381_fp2_mulmod(
-                self.c0.0.as_mut_ptr() as *mut u32,
-                self.c0.0.as_ptr() as *const u32,
+                self.c0.0.as_mut_ptr() as *mut u64,
+                self.c0.0.as_ptr() as *const u64,
             );
         }
         self.mul_r_inv_internal();
@@ -287,7 +300,7 @@ impl Fp2 {
             if #[cfg(target_os = "zkvm")] {
                 let mut out = self.clone();
                 unsafe {
-                    syscall_bls12381_fp2_mulmod(out.c0.0.as_mut_ptr() as *mut u32, self.c0.0.as_ptr() as *const u32);
+                    syscall_bls12381_fp2_mulmod(out.c0.0.as_mut_ptr() as *mut u64, self.c0.0.as_ptr() as *const u64);
                 }
                 out.mul_r_inv_internal();
                 out
@@ -302,8 +315,8 @@ impl Fp2 {
     pub fn mul_inp(&mut self, rhs: &Fp2) {
         unsafe {
             syscall_bls12381_fp2_mulmod(
-                self.c0.0.as_mut_ptr() as *mut u32,
-                rhs.c0.0.as_ptr() as *const u32,
+                self.c0.0.as_mut_ptr() as *mut u64,
+                rhs.c0.0.as_ptr() as *const u64,
             );
         }
         self.mul_r_inv_internal();
@@ -324,8 +337,8 @@ impl Fp2 {
         // Each of these is a "sum of products", which we can compute efficiently.
 
         Fp2 {
-            c0: Fp::sum_of_products([self.c0, self.c1.cpu_neg()], [rhs.c0, rhs.c1]),
-            c1: Fp::sum_of_products([self.c0, self.c1], [rhs.c1, rhs.c0]),
+            c0: Fp::sum_of_products_cpu([self.c0, self.c1.cpu_neg()], [rhs.c0, rhs.c1]),
+            c1: Fp::sum_of_products_cpu([self.c0, self.c1], [rhs.c1, rhs.c0]),
         }
     }
 
@@ -334,7 +347,7 @@ impl Fp2 {
             if #[cfg(target_os = "zkvm")] {
                 let mut out = self.clone();
                 unsafe {
-                    syscall_bls12381_fp2_mulmod(out.c0.0.as_mut_ptr() as *mut u32, rhs.c0.0.as_ptr() as *const u32);
+                    syscall_bls12381_fp2_mulmod(out.c0.0.as_mut_ptr() as *mut u64, rhs.c0.0.as_ptr() as *const u64);
                 }
                 out.mul_r_inv_internal();
                 out
@@ -348,9 +361,13 @@ impl Fp2 {
     #[cfg(target_os = "zkvm")]
     pub fn add_inp(&mut self, rhs: &Fp2) {
         unsafe {
-            syscall_bls12381_fp2_addmod(
-                self.c0.0.as_mut_ptr() as *mut u32,
-                rhs.c0.0.as_ptr() as *const u32,
+            syscall_bls12381_fp_addmod(
+                self.c0.0.as_mut_ptr() as *mut u64,
+                rhs.c0.0.as_ptr() as *const u64,
+            );
+            syscall_bls12381_fp_addmod(
+                self.c1.0.as_mut_ptr() as *mut u64,
+                rhs.c1.0.as_ptr() as *const u64,
             );
         }
     }
@@ -359,9 +376,13 @@ impl Fp2 {
     #[cfg(target_os = "zkvm")]
     pub fn double_inp(&mut self) {
         unsafe {
-            syscall_bls12381_fp2_addmod(
-                self.c0.0.as_mut_ptr() as *mut u32,
-                self.c0.0.as_ptr() as *const u32,
+            syscall_bls12381_fp_addmod(
+                self.c0.0.as_mut_ptr() as *mut u64,
+                self.c0.0.as_ptr() as *const u64,
+            );
+            syscall_bls12381_fp_addmod(
+                self.c1.0.as_mut_ptr() as *mut u64,
+                self.c1.0.as_ptr() as *const u64,
             );
         }
     }
@@ -379,7 +400,8 @@ impl Fp2 {
             if #[cfg(target_os = "zkvm")] {
                 let mut out = self.clone();
                 unsafe {
-                    syscall_bls12381_fp2_addmod(out.c0.0.as_mut_ptr() as *mut u32, rhs.c0.0.as_ptr() as *const u32);
+                    syscall_bls12381_fp_addmod(out.c0.0.as_mut_ptr() as *mut u64, rhs.c0.0.as_ptr() as *const u64);
+                    syscall_bls12381_fp_addmod(out.c1.0.as_mut_ptr() as *mut u64, rhs.c1.0.as_ptr() as *const u64);
                 }
                 out
             } else {
@@ -392,9 +414,13 @@ impl Fp2 {
     #[cfg(target_os = "zkvm")]
     pub fn sub_inp(&mut self, rhs: &Fp2) {
         unsafe {
-            syscall_bls12381_fp2_submod(
-                self.c0.0.as_mut_ptr() as *mut u32,
-                rhs.c0.0.as_ptr() as *const u32,
+            syscall_bls12381_fp_submod(
+                self.c0.0.as_mut_ptr() as *mut u64,
+                rhs.c0.0.as_ptr() as *const u64,
+            );
+            syscall_bls12381_fp_submod(
+                self.c1.0.as_mut_ptr() as *mut u64,
+                rhs.c1.0.as_ptr() as *const u64,
             );
         }
     }
@@ -413,7 +439,8 @@ impl Fp2 {
             if #[cfg(target_os = "zkvm")] {
                 let mut out = self.clone();
                 unsafe {
-                    syscall_bls12381_fp2_submod(out.c0.0.as_mut_ptr() as *mut u32, rhs.c0.0.as_ptr() as *const u32);
+                    syscall_bls12381_fp_submod(out.c0.0.as_mut_ptr() as *mut u64, rhs.c0.0.as_ptr() as *const u64);
+                    syscall_bls12381_fp_submod(out.c1.0.as_mut_ptr() as *mut u64, rhs.c1.0.as_ptr() as *const u64);
                 }
                 out
             } else {
@@ -438,7 +465,8 @@ impl Fp2 {
             if #[cfg(target_os = "zkvm")] {
                 let mut out = Fp2::zero();
                 unsafe {
-                    syscall_bls12381_fp2_submod(out.c0.0.as_mut_ptr() as *mut u32, self.c0.0.as_ptr() as *const u32);
+                    syscall_bls12381_fp_submod(out.c0.0.as_mut_ptr() as *mut u64, self.c0.0.as_ptr() as *const u64);
+                    syscall_bls12381_fp_submod(out.c1.0.as_mut_ptr() as *mut u64, self.c1.0.as_ptr() as *const u64);
                 }
                 out
             } else {
@@ -502,8 +530,84 @@ impl Fp2 {
         })
     }
 
+    #[inline]
     pub fn sqrt(&self) -> CtOption<Self> {
-        self.cpu_sqrt()
+        #[cfg(target_os = "zkvm")]
+        {
+            if self.is_zero().into() {
+                return CtOption::new(Fp2::zero(), Choice::from(1u8));
+            }
+
+            // { c0: 1, c1: 1 }
+            let nqr = Self {
+                c0: Fp::from_raw_unchecked([
+                    8505329371266088957,
+                    17002214543764226050,
+                    6865905132761471162,
+                    8632934651105793861,
+                    6631298214892334189,
+                    1582556514881692819,
+                ]),
+                c1: Fp::from_raw_unchecked([
+                    8505329371266088957,
+                    17002214543764226050,
+                    6865905132761471162,
+                    8632934651105793861,
+                    6631298214892334189,
+                    1582556514881692819,
+                ]),
+            };
+
+            // Try to compute the square root of the element
+            //
+            // or we hint in sqrt(nqr * self)
+            unconstrained! {
+               let mut buf = [0u8; 97];
+
+               if let Some(root) = self.cpu_sqrt().into_option() {
+                   let bytes = root.to_bytes();
+                   buf[..96].copy_from_slice(&bytes);
+                   buf[96] = 1;
+               } else {
+                    let has_root = self.cpu_mul(&nqr);
+                    let root = has_root.cpu_sqrt().unwrap();
+
+                    buf[..96].copy_from_slice(&root.to_bytes());
+                    buf[96] = 0;
+                }
+
+                hint_slice(&buf);
+            }
+
+            let byte_vec = read_vec();
+            let status = byte_vec[96];
+
+            // Safety:
+            // - the length of the byte_vec is guaranteed to be 97, since we just pushed it.
+            // - the executor pushes to the front.
+            // - the ref is only cloned from before byte_vec is dropped.
+            let bytes = unsafe { &*(byte_vec.as_ptr() as *const [u8; 96]) };
+
+            match status {
+                0 => {
+                    let root = Fp2::from_bytes(&bytes[0..96].try_into().unwrap()).unwrap();
+                    let has_root = self * nqr;
+
+                    assert_eq!(root * root, has_root);
+
+                    CtOption::new(Self::zero(), Choice::from(0u8))
+                }
+                _ => {
+                    let root = Fp2::from_bytes(&bytes[0..96].try_into().unwrap()).unwrap();
+                    CtOption::new(root, (root * root).ct_eq(self))
+                }
+            }
+        }
+
+        #[cfg(not(target_os = "zkvm"))]
+        {
+            self.cpu_sqrt()
+        }
     }
 
     /// Computes the multiplicative inverse of this field
@@ -534,32 +638,37 @@ impl Fp2 {
     }
 
     pub fn invert(&self) -> CtOption<Self> {
+        if self.is_zero().into() {
+            return CtOption::new(Fp2::zero(), Choice::from(0u8));
+        }
+
         #[cfg(target_os = "zkvm")]
         {
-            // Compute the inverse using the zkvm syscall
             unconstrained! {
-                let mut buf = [0u8; 97];
-                self.cpu_invert().map(|inv| {
-                    buf[..96].copy_from_slice(&inv.to_bytes());
-                    buf[96] = 1;
-                });
-                hint_slice(&buf);
+                // The element was previously checked to be non-zero
+                if let Some(inv) = self.cpu_invert().into_option() {
+                    let bytes = inv.to_bytes();
+
+                    hint_slice(&bytes);
+                } else {
+                    unreachable!();
+                }
             }
 
             let byte_vec = read_vec();
-            let bytes: [u8; 97] = byte_vec.try_into().unwrap();
-            match bytes[96] {
-                0 => CtOption::new(Fp2::zero(), Choice::from(0u8)),
-                _ => {
-                    let inv = Fp2::from_bytes(&bytes[0..96].try_into().unwrap()).unwrap();
-                    CtOption::new(inv, !self.is_zero() & (self * inv).ct_eq(&Fp2::one()))
-                }
-            }
+
+            // Safety:
+            // - the length of the byte_vec is guaranteed to be 48, since we just pushed it.
+            // - the executor pushes to the front.
+            // - the ref is only cloned from before byte_vec is dropped.
+            let bytes = unsafe { &*(byte_vec.as_ptr() as *const [u8; 96]) };
+            let inv = Fp2::from_bytes(bytes).unwrap();
+
+            CtOption::new(inv, (self * inv).ct_eq(&Fp2::one()))
         }
+
         #[cfg(not(target_os = "zkvm"))]
-        {
-            self.cpu_invert()
-        }
+        self.cpu_invert()
     }
 
     fn pow_vartime_constrained(&self, by: &[u64; 6]) -> Self {
@@ -636,7 +745,7 @@ fn test_conditional_selection() {
 fn test_equality() {
     fn is_equal(a: &Fp2, b: &Fp2) -> bool {
         let eq = a == b;
-        let ct_eq = a.ct_eq(&b);
+        let ct_eq = a.ct_eq(b);
 
         assert_eq!(eq, bool::from(ct_eq));
 
@@ -1142,6 +1251,45 @@ fn test_lexicographic_largest() {
         }
         .lexicographically_largest()
     ));
+}
+
+#[test]
+fn test_fp2_nqr() {
+    // { c0: 1, c1: 1 }
+    let nqr = Fp2 {
+        c0: Fp::from_raw_unchecked([
+            8505329371266088957,
+            17002214543764226050,
+            6865905132761471162,
+            8632934651105793861,
+            6631298214892334189,
+            1582556514881692819,
+        ]),
+        c1: Fp::from_raw_unchecked([
+            8505329371266088957,
+            17002214543764226050,
+            6865905132761471162,
+            8632934651105793861,
+            6631298214892334189,
+            1582556514881692819,
+        ]),
+    };
+
+    println!("c0: {:?}", nqr.c0.0);
+    println!("c1: {:?}", nqr.c1.0);
+
+    assert!(bool::from(nqr.sqrt().is_none()));
+
+    for _ in 0..100 {
+        let a = Fp2::random(&mut rand::thread_rng());
+        if a.sqrt().is_some().into() {
+            continue;
+        }
+
+        let b = a * nqr;
+
+        assert!(bool::from(b.sqrt().is_some()));
+    }
 }
 
 #[cfg(feature = "zeroize")]

@@ -8,12 +8,6 @@ use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 #[cfg(feature = "pairings")]
 use rand_core::RngCore;
 
-#[cfg(target_os = "zkvm")]
-use pico_patch_libs::{
-    io::{hint_slice, read_vec},
-    unconstrained,
-};
-
 /// This represents an element $c_0 + c_1 v + c_2 v^2$ of $\mathbb{F}_{p^6} = \mathbb{F}_{p^2} / v^3 - u - 1$.
 pub struct Fp6 {
     pub c0: Fp2,
@@ -270,10 +264,6 @@ impl Fp6 {
         self.c0.is_zero() & self.c1.is_zero() & self.c2.is_zero()
     }
 
-    /// Returns `c = self * b`.
-    ///
-    /// Implements the full-tower interleaving strategy from
-    /// [ePrint 2022-376](https://eprint.iacr.org/2022/367).
     #[inline]
     fn mul_interleaved(&self, b: &Self) -> Self {
         cfg_if::cfg_if! {
@@ -359,31 +349,31 @@ impl Fp6 {
 
                 Fp6 {
                     c0: Fp2 {
-                        c0: Fp::sum_of_products(
+                        c0: Fp::sum_of_products_cpu(
                             [a.c0.c0, -a.c0.c1, a.c1.c0, -a.c1.c1, a.c2.c0, -a.c2.c1],
                             [b.c0.c0, b.c0.c1, b20_m_b21, b20_p_b21, b10_m_b11, b10_p_b11],
                         ),
-                        c1: Fp::sum_of_products(
+                        c1: Fp::sum_of_products_cpu(
                             [a.c0.c0, a.c0.c1, a.c1.c0, a.c1.c1, a.c2.c0, a.c2.c1],
                             [b.c0.c1, b.c0.c0, b20_p_b21, b20_m_b21, b10_p_b11, b10_m_b11],
                         ),
                     },
                     c1: Fp2 {
-                        c0: Fp::sum_of_products(
+                        c0: Fp::sum_of_products_cpu(
                             [a.c0.c0, -a.c0.c1, a.c1.c0, -a.c1.c1, a.c2.c0, -a.c2.c1],
                             [b.c1.c0, b.c1.c1, b.c0.c0, b.c0.c1, b20_m_b21, b20_p_b21],
                         ),
-                        c1: Fp::sum_of_products(
+                        c1: Fp::sum_of_products_cpu(
                             [a.c0.c0, a.c0.c1, a.c1.c0, a.c1.c1, a.c2.c0, a.c2.c1],
                             [b.c1.c1, b.c1.c0, b.c0.c1, b.c0.c0, b20_p_b21, b20_m_b21],
                         ),
                     },
                     c2: Fp2 {
-                        c0: Fp::sum_of_products(
+                        c0: Fp::sum_of_products_cpu(
                             [a.c0.c0, -a.c0.c1, a.c1.c0, -a.c1.c1, a.c2.c0, -a.c2.c1],
                             [b.c2.c0, b.c2.c1, b.c1.c0, b.c1.c1, b.c0.c0, b.c0.c1],
                         ),
-                        c1: Fp::sum_of_products(
+                        c1: Fp::sum_of_products_cpu(
                             [a.c0.c0, a.c0.c1, a.c1.c0, a.c1.c1, a.c2.c0, a.c2.c1],
                             [b.c2.c1, b.c2.c0, b.c1.c1, b.c1.c0, b.c0.c1, b.c0.c0],
                         ),
@@ -441,6 +431,7 @@ impl Fp6 {
     }
 
     #[inline]
+    // This function panics when the input is non-canonical, unlike `Fp`'s `from_bytes`.
     pub fn from_bytes(bytes: &[u8; 288]) -> CtOption<Fp6> {
         let c0 = Fp2::from_bytes(&bytes[..96].try_into().unwrap());
         let c1 = Fp2::from_bytes(&bytes[96..192].try_into().unwrap());
@@ -458,20 +449,20 @@ impl Fp6 {
     }
 }
 
-impl<'a, 'b> Mul<&'b Fp6> for &'a Fp6 {
+impl<'a> Mul<&'a Fp6> for &Fp6 {
     type Output = Fp6;
 
     #[inline]
-    fn mul(self, other: &'b Fp6) -> Self::Output {
+    fn mul(self, other: &'a Fp6) -> Self::Output {
         self.mul_interleaved(other)
     }
 }
 
-impl<'a, 'b> Add<&'b Fp6> for &'a Fp6 {
+impl<'a> Add<&'a Fp6> for &Fp6 {
     type Output = Fp6;
 
     #[inline]
-    fn add(self, rhs: &'b Fp6) -> Self::Output {
+    fn add(self, rhs: &'a Fp6) -> Self::Output {
         Fp6 {
             c0: self.c0 + rhs.c0,
             c1: self.c1 + rhs.c1,
@@ -480,7 +471,7 @@ impl<'a, 'b> Add<&'b Fp6> for &'a Fp6 {
     }
 }
 
-impl<'a> Neg for &'a Fp6 {
+impl Neg for &Fp6 {
     type Output = Fp6;
 
     #[inline]
@@ -502,11 +493,11 @@ impl Neg for Fp6 {
     }
 }
 
-impl<'a, 'b> Sub<&'b Fp6> for &'a Fp6 {
+impl<'a> Sub<&'a Fp6> for &Fp6 {
     type Output = Fp6;
 
     #[inline]
-    fn sub(self, rhs: &'b Fp6) -> Self::Output {
+    fn sub(self, rhs: &'a Fp6) -> Self::Output {
         Fp6 {
             c0: self.c0 - rhs.c0,
             c1: self.c1 - rhs.c1,

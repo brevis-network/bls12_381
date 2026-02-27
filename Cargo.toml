@@ -1,19 +1,38 @@
 [package]
 name = "bls12_381"
+version = "0.8.0"
 authors = [
+    "Bhargav Annem <bhargav.annem@gmail.com>",
     "Sean Bowe <ewillbefull@gmail.com>",
     "Jack Grigg <thestr4d@gmail.com>",
 ]
 edition = "2021"
-version = "0.8.0"
+rust-version = "1.56"
 description = "Implementation of the BLS12-381 pairing-friendly elliptic curve construction"
-documentation = "https://docs.rs/bls12_381/"
 homepage = "https://github.com/brevis-network/bls12_381"
 license = "MIT/Apache-2.0"
 repository = "https://github.com/brevis-network/bls12_381"
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--html-in-header", "katex-header.html"]
+
+[dependencies]
+cfg-if = "1.0"
+digest = { version = "0.10", optional = true }
+ff = { version = "0.13", default-features = false }
+group = { version = "0.13", optional = true, default-features = false }
+pairing = { version = "0.23", optional = true }
+rand_core = { version = "0.6", default-features = false }
+subtle = { version = "2.6.1", default-features = false }
+zeroize = { version = "1.8", optional = true, default-features = false }
+hex = { version = "0.4", optional = true, default-features = false, features = [
+    "alloc",
+] }
+
+[target.'cfg(target_os = "zkvm")'.dependencies]
+pico-patch-libs = { git = "https://github.com/brevis-network/pico.git", branch = "rv64" }
+# local debug
+# pico-patch-libs = { path = "../../brevis-vm/sdk/patch-libs" }
 
 [dev-dependencies]
 csv = ">= 1.0, < 1.2" # csv 1.2 has MSRV 1.60
@@ -22,6 +41,28 @@ hex-literal = "0.3"
 rand_xorshift = "0.3"
 sha2 = "0.10"
 sha3 = "0.10"
+rand = "0.8"
+
+[features]
+default = ["groups", "pairings", "alloc", "bits"]
+bits = ["ff/bits"]
+groups = ["group"]
+pairings = ["groups", "pairing"]
+alloc = ["group/alloc"]
+experimental = ["digest", "groups", "hex"]
+nightly = ["subtle/nightly"]
+
+[[test]]
+name = "expand_msg"
+required-features = ["alloc", "experimental"]
+
+[[test]]
+name = "hash_to_curve_g1"
+required-features = ["experimental"]
+
+[[test]]
+name = "hash_to_curve_g2"
+required-features = ["experimental"]
 
 [[bench]]
 name = "groups"
@@ -32,57 +73,3 @@ required-features = ["groups"]
 name = "hash_to_curve"
 harness = false
 required-features = ["experimental"]
-
-[dependencies.cfg-if]
-version = "1.0.0"
-default-features = false
-
-[dependencies.digest]
-version = "0.9"
-optional = true
-default-features = false
-
-[dependencies.ff]
-version = "0.13"
-default-features = false
-
-[dependencies.group]
-version = "0.13"
-default-features = false
-optional = true
-
-[dependencies.pairing]
-version = "0.23"
-optional = true
-default-features = false
-
-[dependencies.rand_core]
-version = "0.6"
-default-features = false
-
-[dependencies.subtle]
-version = "2.2.1"
-default-features = false
-
-[dependencies.zeroize]
-version = "1.4"
-default-features = false
-optional = true
-
-[dependencies.hex]
-version = "0.4"
-default-features = false
-features = ["alloc"]
-optional = true
-
-[features]
-default = ["groups", "pairings", "alloc", "bits"]
-bits = ["ff/bits"]
-groups = ["group"]
-pairings = ["groups", "pairing"]
-alloc = ["group/alloc"]
-experimental = ["digest", "hex"]
-nightly = ["subtle/nightly"]
-
-[target.'cfg(target_os = "zkvm")'.dependencies]
-pico-patch-libs = { git = "https://github.com/brevis-network/pico.git" }

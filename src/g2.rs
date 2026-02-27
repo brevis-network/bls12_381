@@ -101,7 +101,7 @@ impl PartialEq for G2Affine {
     }
 }
 
-impl<'a> Neg for &'a G2Affine {
+impl Neg for &G2Affine {
     type Output = G2Affine;
 
     #[inline]
@@ -123,38 +123,38 @@ impl Neg for G2Affine {
     }
 }
 
-impl<'a, 'b> Add<&'b G2Projective> for &'a G2Affine {
+impl<'a> Add<&'a G2Projective> for &G2Affine {
     type Output = G2Projective;
 
     #[inline]
-    fn add(self, rhs: &'b G2Projective) -> G2Projective {
+    fn add(self, rhs: &'a G2Projective) -> G2Projective {
         rhs.add_mixed(self)
     }
 }
 
-impl<'a, 'b> Add<&'b G2Affine> for &'a G2Projective {
+impl<'a> Add<&'a G2Affine> for &G2Projective {
     type Output = G2Projective;
 
     #[inline]
-    fn add(self, rhs: &'b G2Affine) -> G2Projective {
+    fn add(self, rhs: &'a G2Affine) -> G2Projective {
         self.add_mixed(rhs)
     }
 }
 
-impl<'a, 'b> Sub<&'b G2Projective> for &'a G2Affine {
+impl<'a> Sub<&'a G2Projective> for &G2Affine {
     type Output = G2Projective;
 
     #[inline]
-    fn sub(self, rhs: &'b G2Projective) -> G2Projective {
+    fn sub(self, rhs: &'a G2Projective) -> G2Projective {
         self + (-rhs)
     }
 }
 
-impl<'a, 'b> Sub<&'b G2Affine> for &'a G2Projective {
+impl<'a> Sub<&'a G2Affine> for &G2Projective {
     type Output = G2Projective;
 
     #[inline]
-    fn sub(self, rhs: &'b G2Affine) -> G2Projective {
+    fn sub(self, rhs: &'a G2Affine) -> G2Projective {
         self + (-rhs)
     }
 }
@@ -583,7 +583,7 @@ impl PartialEq for G2Projective {
     }
 }
 
-impl<'a> Neg for &'a G2Projective {
+impl Neg for &G2Projective {
     type Output = G2Projective;
 
     #[inline]
@@ -605,54 +605,54 @@ impl Neg for G2Projective {
     }
 }
 
-impl<'a, 'b> Add<&'b G2Projective> for &'a G2Projective {
+impl<'a> Add<&'a G2Projective> for &G2Projective {
     type Output = G2Projective;
 
     #[inline]
-    fn add(self, rhs: &'b G2Projective) -> G2Projective {
+    fn add(self, rhs: &'a G2Projective) -> G2Projective {
         self.add(rhs)
     }
 }
 
-impl<'a, 'b> Sub<&'b G2Projective> for &'a G2Projective {
+impl<'a> Sub<&'a G2Projective> for &G2Projective {
     type Output = G2Projective;
 
     #[inline]
-    fn sub(self, rhs: &'b G2Projective) -> G2Projective {
+    fn sub(self, rhs: &'a G2Projective) -> G2Projective {
         self + (-rhs)
     }
 }
 
-impl<'a, 'b> Mul<&'b Scalar> for &'a G2Projective {
+impl<'a> Mul<&'a Scalar> for &G2Projective {
     type Output = G2Projective;
 
-    fn mul(self, other: &'b Scalar) -> Self::Output {
+    fn mul(self, other: &'a Scalar) -> Self::Output {
         self.multiply(&other.to_bytes())
     }
 }
 
-impl<'a, 'b> Mul<&'b G2Projective> for &'a Scalar {
+impl<'a> Mul<&'a G2Projective> for &Scalar {
     type Output = G2Projective;
 
     #[inline]
-    fn mul(self, rhs: &'b G2Projective) -> Self::Output {
+    fn mul(self, rhs: &'a G2Projective) -> Self::Output {
         rhs * self
     }
 }
 
-impl<'a, 'b> Mul<&'b Scalar> for &'a G2Affine {
+impl<'a> Mul<&'a Scalar> for &G2Affine {
     type Output = G2Projective;
 
-    fn mul(self, other: &'b Scalar) -> Self::Output {
+    fn mul(self, other: &'a Scalar) -> Self::Output {
         G2Projective::from(self).multiply(&other.to_bytes())
     }
 }
 
-impl<'a, 'b> Mul<&'b G2Affine> for &'a Scalar {
+impl<'a> Mul<&'a G2Affine> for &Scalar {
     type Output = G2Projective;
 
     #[inline]
-    fn mul(self, rhs: &'b G2Affine) -> Self::Output {
+    fn mul(self, rhs: &'a G2Affine) -> Self::Output {
         rhs * self
     }
 }
@@ -2278,15 +2278,24 @@ fn test_commutative_scalar_subgroup_multiplication() {
     let g2_a = G2Affine::generator();
     let g2_p = G2Projective::generator();
 
-    // By reference.
-    assert_eq!(&g2_a * &a, &a * &g2_a);
-    assert_eq!(&g2_p * &a, &a * &g2_p);
+    // By reference. In subfunction to avoid "needlessly taken reference" lint.
+    fn by_ref(g2_a: &G2Affine, g2_p: &G2Projective, a: &Scalar) {
+        assert_eq!(g2_a * a, a * g2_a);
+        assert_eq!(g2_p * a, a * g2_p);
+    }
+    by_ref(&g2_a, &g2_p, &a);
 
     // Mixed
-    assert_eq!(&g2_a * a.clone(), a.clone() * &g2_a);
-    assert_eq!(&g2_p * a.clone(), a.clone() * &g2_p);
-    assert_eq!(g2_a.clone() * &a, &a * g2_a.clone());
-    assert_eq!(g2_p.clone() * &a, &a * g2_p.clone());
+    fn group_ref(g2_a: &G2Affine, g2_p: &G2Projective, a: Scalar) {
+        assert_eq!(g2_a * a, a * g2_a);
+        assert_eq!(g2_p * a, a * g2_p);
+    }
+    fn scalar_ref(g2_a: G2Affine, g2_p: G2Projective, a: &Scalar) {
+        assert_eq!(g2_a * a, a * g2_a);
+        assert_eq!(g2_p * a, a * g2_p);
+    }
+    group_ref(&g2_a, &g2_p, a);
+    scalar_ref(g2_a, g2_p, &a);
 
     // By value.
     assert_eq!(g2_p * a, a * g2_p);

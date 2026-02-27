@@ -9,12 +9,6 @@ use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 #[cfg(feature = "pairings")]
 use rand_core::RngCore;
 
-#[cfg(target_os = "zkvm")]
-use pico_patch_libs::{
-    io::{hint_slice, read_vec},
-    unconstrained,
-};
-
 /// This represents an element $c_0 + c_1 w$ of $\mathbb{F}_{p^12} = \mathbb{F}_{p^6} / w^2 - v$.
 pub struct Fp12 {
     pub c0: Fp6,
@@ -319,6 +313,7 @@ impl Fp12 {
     }
 
     #[inline]
+    // This function panics when the input is non-canonical, unlike `Fp`'s `from_bytes`.
     pub fn from_bytes(bytes: &[u8; 576]) -> CtOption<Fp12> {
         let c0 = Fp6::from_bytes(&bytes[..288].try_into().unwrap());
         let c1 = Fp6::from_bytes(&bytes[288..].try_into().unwrap());
@@ -334,20 +329,20 @@ impl Fp12 {
     }
 }
 
-impl<'a, 'b> Mul<&'b Fp12> for &'a Fp12 {
+impl<'a> Mul<&'a Fp12> for &Fp12 {
     type Output = Fp12;
 
     #[inline]
-    fn mul(self, other: &'b Fp12) -> Self::Output {
+    fn mul(self, other: &'a Fp12) -> Self::Output {
         self.mul(other)
     }
 }
 
-impl<'a, 'b> Add<&'b Fp12> for &'a Fp12 {
+impl<'a> Add<&'a Fp12> for &Fp12 {
     type Output = Fp12;
 
     #[inline]
-    fn add(self, rhs: &'b Fp12) -> Self::Output {
+    fn add(self, rhs: &'a Fp12) -> Self::Output {
         Fp12 {
             c0: self.c0 + rhs.c0,
             c1: self.c1 + rhs.c1,
@@ -355,7 +350,7 @@ impl<'a, 'b> Add<&'b Fp12> for &'a Fp12 {
     }
 }
 
-impl<'a> Neg for &'a Fp12 {
+impl Neg for &Fp12 {
     type Output = Fp12;
 
     #[inline]
@@ -376,11 +371,11 @@ impl Neg for Fp12 {
     }
 }
 
-impl<'a, 'b> Sub<&'b Fp12> for &'a Fp12 {
+impl<'a> Sub<&'a Fp12> for &Fp12 {
     type Output = Fp12;
 
     #[inline]
-    fn sub(self, rhs: &'b Fp12) -> Self::Output {
+    fn sub(self, rhs: &'a Fp12) -> Self::Output {
         Fp12 {
             c0: self.c0 - rhs.c0,
             c1: self.c1 - rhs.c1,

@@ -88,29 +88,12 @@ const MODULUS: Scalar = Scalar([
     0x73ed_a753_299d_7d48,
 ]);
 
-/// The modulus as u32 limbs.
 #[cfg(target_os = "zkvm")]
-const MODULUS_LIMBS_32: [u32; 8] = [
-    0x0000_0001,
-    0xffff_ffff,
-    0xfffe_5bfe,
-    0x53bd_a402,
-    0x09a1_d805,
-    0x3339_d808,
-    0x299d_7d48,
-    0x73ed_a753,
-];
-
-#[cfg(target_os = "zkvm")]
-const R_INV: [u32; 8] = [
-    0xfe75_c040,
-    0x13f7_5b69,
-    0x09dc_705f,
-    0xab6f_ca8f,
-    0x4f77_266a,
-    0x7204_078a,
-    0x3000_9d57,
-    0x1bbe_8693,
+const R_INV: [u64; 4] = [
+    0x13f7_5b69_fe75_c040,
+    0xab6f_ca8f_09dc_705f,
+    0x7204_078a_4f77_266a,
+    0x1bbe_8693_3000_9d57,
 ];
 
 // The number of bits needed to represent the modulus.
@@ -124,7 +107,7 @@ const GENERATOR: Scalar = Scalar([
     0x3513_3220_8fc5_a8c4,
 ]);
 
-impl<'a> Neg for &'a Scalar {
+impl Neg for &Scalar {
     type Output = Scalar;
 
     #[inline]
@@ -142,29 +125,29 @@ impl Neg for Scalar {
     }
 }
 
-impl<'a, 'b> Sub<&'b Scalar> for &'a Scalar {
+impl<'a> Sub<&'a Scalar> for &Scalar {
     type Output = Scalar;
 
     #[inline]
-    fn sub(self, rhs: &'b Scalar) -> Scalar {
+    fn sub(self, rhs: &'a Scalar) -> Scalar {
         self.sub(rhs)
     }
 }
 
-impl<'a, 'b> Add<&'b Scalar> for &'a Scalar {
+impl<'a> Add<&'a Scalar> for &Scalar {
     type Output = Scalar;
 
     #[inline]
-    fn add(self, rhs: &'b Scalar) -> Scalar {
+    fn add(self, rhs: &'a Scalar) -> Scalar {
         self.add(rhs)
     }
 }
 
-impl<'a, 'b> Mul<&'b Scalar> for &'a Scalar {
+impl<'a> Mul<&'a Scalar> for &Scalar {
     type Output = Scalar;
 
     #[inline]
-    fn mul(self, rhs: &'b Scalar) -> Scalar {
+    fn mul(self, rhs: &'a Scalar) -> Scalar {
         self.mul(rhs)
     }
 }
@@ -540,23 +523,29 @@ impl Scalar {
     pub fn invert(&self) -> CtOption<Self> {
         #[cfg(target_os = "zkvm")]
         {
+            if self.is_zero().into() {
+                return CtOption::new(Self::zero(), Choice::from(0u8));
+            }
             unconstrained! {
-                let mut buf = [0u8; 33];
+                let mut buf = [0u8; 32];
                 self.cpu_invert().map(|inv| {
                     buf[0..32].copy_from_slice(&inv.to_bytes());
-                    buf[32] = 1;
                 });
                 hint_slice(&buf);
             }
             let byte_vec = read_vec();
-            let bytes: [u8; 33] = byte_vec.try_into().unwrap();
-            match bytes[32] {
-                0 => CtOption::new(Scalar::zero(), Choice::from(0u8)),
-                _ => {
-                    let inv = Scalar::from_bytes(&bytes[0..32].try_into().unwrap()).unwrap();
-                    CtOption::new(inv, (self * inv).ct_eq(&Scalar::one()))
-                }
-            }
+
+            // Safety:
+            //
+            // - The byte_vec is guaranteed to be 32 bytes long because we just pushed it,
+            // and the executor always pushes to the front of the input buffer.
+            //
+            // `from_scalar` just clones the bytes before byte_vec is dropped.
+            let bytes = unsafe { &*(byte_vec.as_ptr() as *const [u8; 32]) };
+            let inv = Scalar::from_bytes(bytes).unwrap();
+
+            assert!(self * &inv == Scalar::one(), "Invalid hint: Scalar invert");
+            return CtOption::new(inv, Choice::from(1u8));
         }
         #[cfg(not(target_os = "zkvm"))]
         {
@@ -617,11 +606,11 @@ impl Scalar {
     pub(crate) fn mul_r_inv_internal(&mut self) {
         unsafe {
             sys_bigint(
-                self.0.as_mut_ptr() as *mut [u32; 8],
+                self.0.as_mut_ptr() as *mut [u64; 4],
                 0,
-                self.0.as_ptr() as *const [u32; 8],
+                self.0.as_ptr() as *const [u64; 4],
                 &R_INV,
-                &MODULUS_LIMBS_32,
+                MODULUS.0.as_ptr() as *const [u64; 4],
             );
         }
     }
@@ -632,11 +621,11 @@ impl Scalar {
             if #[cfg(target_os = "zkvm")] {
                 unsafe {
                     sys_bigint(
-                        self.0.as_mut_ptr() as *mut[u32; 8],
+                        self.0.as_mut_ptr() as *mut[u64; 4],
                         0,
-                        self.0.as_ptr() as *const [u32; 8],
-                        rhs.0.as_ptr() as *const [u32; 8],
-                        &MODULUS_LIMBS_32,
+                        self.0.as_ptr() as *const [u64; 4],
+                        rhs.0.as_ptr() as *const [u64; 4],
+                        MODULUS.0.as_ptr() as *const [u64; 4],
                     );
                 }
                 self.mul_r_inv_internal();
@@ -855,7 +844,7 @@ impl PrimeField for Scalar {
 }
 
 #[cfg(all(feature = "bits", not(target_pointer_width = "64")))]
-type ReprBits = [u32; 8];
+type ReprBits = [u64; 4];
 
 #[cfg(all(feature = "bits", target_pointer_width = "64"))]
 type ReprBits = [u64; 4];
@@ -893,7 +882,7 @@ impl PrimeFieldBits for Scalar {
     fn char_le_bits() -> FieldBits<Self::ReprBits> {
         #[cfg(not(target_pointer_width = "64"))]
         {
-            FieldBits::new(MODULUS_LIMBS_32)
+            FieldBits::new(MODULUS.0.as_ptr())
         }
 
         #[cfg(target_pointer_width = "64")]
@@ -992,7 +981,10 @@ fn test_debug() {
 fn test_equality() {
     assert_eq!(Scalar::zero(), Scalar::zero());
     assert_eq!(Scalar::one(), Scalar::one());
-    assert_eq!(R2, R2);
+    #[allow(clippy::eq_op)]
+    {
+        assert_eq!(R2, R2);
+    }
 
     assert!(Scalar::zero() != Scalar::one());
     assert!(Scalar::one() != R2);
