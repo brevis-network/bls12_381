@@ -445,10 +445,11 @@ pub fn map_to_curve_simple_swu(u: &Fp2) -> G2Projective {
     let mut eta_found = Choice::from(0u8);
     for eta in &SSWU_ETAS[..] {
         let tmp = sqrt_candidate * eta;
-        // x1(u) only when g(x0(u)) is not a square (RFC 9380, 6.6.2). For u != 0 exactly one of
-        // g(x0(u)), g(x1(u)) is a square and the guard changes nothing. At u = 0 both sides below
-        // are 0 (gx1_num = g(x0) * XI^3 * u^6 is g(x1) only for u != 0), which without the guard
-        // took x1 = XI * u^2 * x0 = 0 with y = 0 and mapped 0 to the identity.
+        // x1(u) only when g(x0(u)) is not a square (RFC 9380, 6.6.2). For u != 0, g(x1) =
+        // XI^3 * u^6 * g(x0) with XI a non-square, so a nonzero square g(x0) never passes below
+        // and the guard matters only where g(x0(u)) = 0. At u = 0 both sides below are 0
+        // (gx1_num stands for g(x1) only for u != 0; there g(x1) = g(0) = B), which without the
+        // guard took x1 = XI * u^2 * x0 = 0 with y = 0 and mapped 0 to the identity.
         let found = (tmp.square() * gx_den).ct_eq(&gx1_num) & !gx0_square;
         y.conditional_assign(&tmp, found);
         eta_found |= found;
