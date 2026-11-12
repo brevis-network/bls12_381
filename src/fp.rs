@@ -79,7 +79,7 @@ impl ConditionallySelectable for Fp {
 }
 
 /// p = 4002409555221667393417789825735904156556882819939007885332058136124031650490837864442687629129015664037894272559787
-const MODULUS: [u64; 6] = [
+pub(crate) const MODULUS: [u64; 6] = [
     0xb9fe_ffff_ffff_aaab,
     0x1eab_fffe_b153_ffff,
     0x6730_d2a0_f6b0_f624,
