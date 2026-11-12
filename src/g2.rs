@@ -937,7 +937,12 @@ impl G2Projective {
         G2Projective::conditional_select(&tmp, self, rhs.is_identity())
     }
 
-    fn multiply(&self, by: &[u8]) -> G2Projective {
+    pub(crate) fn multiply(&self, by: &[u8]) -> G2Projective {
+        // Constant time buys nothing in the zkVM, where the prover knows the inputs.
+        #[cfg(target_os = "zkvm")]
+        return self.multiply_vartime(by);
+
+        #[allow(unreachable_code)]
         let mut acc = G2Projective::identity();
 
         // This is a simple double-and-add implementation of point
@@ -2179,6 +2184,13 @@ fn test_clear_cofactor() {
 
     assert!(bool::from(point.is_on_curve()));
     assert!(!bool::from(G2Affine::from(point).is_torsion_free()));
+    // the variable-time multiplication needs no subgroup, and takes scalars of any length
+    // (`multiply` skips the top bit, so it is clear here)
+    let mut long = [0xffu8; 40];
+    long[39] = 0x7f;
+    for by in [&long[..], &[0x5a; 32][..], &[][..]] {
+        assert_eq!(point.multiply_vartime(by), point.multiply(by));
+    }
     let cleared_point = point.clear_cofactor();
 
     assert!(bool::from(cleared_point.is_on_curve()));
