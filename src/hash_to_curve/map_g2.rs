@@ -412,23 +412,31 @@ pub fn map_to_curve_simple_swu(u: &Fp2) -> G2Projective {
         uv_7 * chain_p2m9div16(&uv_15) // u v^7 (u v^15) ^ ((p^2 - 9) // 16)
     };
 
-    // set y = sqrt_candidate * Fp2::one(), check candidate against other roots of unity
+    // set y = sqrt_candidate * Fp2::one(), check candidate against other roots of unity, and
+    // record whether any of them is a square root of g(x0(u))
     let mut y = sqrt_candidate;
+    let mut gx0_square = (sqrt_candidate.square() * gx_den).ct_eq(&gx0_num);
     // check Fp2(0, 1)
     let tmp = Fp2 {
         c0: -sqrt_candidate.c1,
         c1: sqrt_candidate.c0,
     };
-    y.conditional_assign(&tmp, (tmp.square() * gx_den).ct_eq(&gx0_num));
+    let found = (tmp.square() * gx_den).ct_eq(&gx0_num);
+    y.conditional_assign(&tmp, found);
+    gx0_square |= found;
     // check Fp2(RV1, RV1)
     let tmp = sqrt_candidate * SSWU_RV1;
-    y.conditional_assign(&tmp, (tmp.square() * gx_den).ct_eq(&gx0_num));
+    let found = (tmp.square() * gx_den).ct_eq(&gx0_num);
+    y.conditional_assign(&tmp, found);
+    gx0_square |= found;
     // check Fp2(RV1, -RV1)
     let tmp = Fp2 {
         c0: tmp.c1,
         c1: -tmp.c0,
     };
-    y.conditional_assign(&tmp, (tmp.square() * gx_den).ct_eq(&gx0_num));
+    let found = (tmp.square() * gx_den).ct_eq(&gx0_num);
+    y.conditional_assign(&tmp, found);
+    gx0_square |= found;
 
     // compute g(x1(u)) = g(x0(u)) * XI^3 * u^6
     let gx1_num = gx0_num * xi_usq * xisq_u4;
@@ -437,7 +445,12 @@ pub fn map_to_curve_simple_swu(u: &Fp2) -> G2Projective {
     let mut eta_found = Choice::from(0u8);
     for eta in &SSWU_ETAS[..] {
         let tmp = sqrt_candidate * eta;
-        let found = (tmp.square() * gx_den).ct_eq(&gx1_num);
+        // x1(u) only when g(x0(u)) is not a square (RFC 9380, 6.6.2). For u != 0, g(x1) =
+        // XI^3 * u^6 * g(x0) with XI a non-square, so a nonzero square g(x0) never passes below
+        // and the guard matters only where g(x0(u)) = 0. At u = 0 both sides below are 0
+        // (gx1_num stands for g(x1) only for u != 0; there g(x1) = g(0) = B), which without the
+        // guard took x1 = XI * u^2 * x0 = 0 with y = 0 and mapped 0 to the identity.
+        let found = (tmp.square() * gx_den).ct_eq(&gx1_num) & !gx0_square;
         y.conditional_assign(&tmp, found);
         eta_found |= found;
     }
@@ -666,4 +679,28 @@ fn test_sgn0() {
         }
         .sgn0()
     ));
+}
+
+/// u = 0, where SSWU's tv1 = XI^2 u^4 + XI u^2 is 0 and x0 = B / (XI * A): a finite point on
+/// iso-G2, and EIP-2537's MAP_FP2_TO_G2(0, 0) after the isogeny and cofactor clearing, as blst and
+/// arkworks compute it. It used to map to the identity.
+#[test]
+fn test_osswu_at_zero() {
+    use crate::g2::G2Affine;
+    use hex_literal::hex;
+
+    let p = map_to_curve_simple_swu(&Fp2::zero());
+    assert!(check_g2_prime(&p));
+    assert!(!bool::from(p.is_identity()));
+
+    let mapped = G2Affine::from(<G2Projective as MapToCurve>::map_to_curve(&Fp2::zero()).clear_h());
+    // zkcrypto's uncompressed encoding: x.c1, x.c0, y.c1, y.c0
+    let expected = G2Affine::from_uncompressed(&hex!(
+        "0a67d12118b5a35bb02d2e86b3ebfa7e23410db93de39fb06d7025fa95e96ffa428a7a27c3ae4dd4b40bd251ac658892"
+        "018320896ec9eef9d5e619848dc29ce266f413d02dd31d9b9d44ec0c79cd61f18b075ddba6d7bd20b7ff27a4b324bfce"
+        "04c69777a43f0bda07679d5805e63f18cf4e0e7c6112ac7f70266d199b4f76ae27c6269a3ceebdae30806e9a76aadf5c"
+        "0260e03644d1a2c321256b3246bad2b895cad13890cbe6f85df55106a0d334604fb143c7a042d878006271865bc35941"
+    ))
+    .unwrap();
+    assert_eq!(mapped, expected);
 }
