@@ -963,6 +963,8 @@ impl G1Projective {
     }
 
     /// Performs a Variable Base Multiscalar Multiplication.
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
     pub fn msm_variable_base(points: &[G1Projective], scalars: &[Scalar]) -> G1Projective {
         let c = if scalars.len() < 32 {
             3
@@ -1288,11 +1290,13 @@ impl UncompressedEncoding for G1Affine {
     }
 }
 
+#[cfg(feature = "alloc")]
 fn ln_without_floats(a: usize) -> usize {
     // log2(a) * ln(2)
     (log2(a) * 69 / 100) as usize
 }
 
+#[cfg(feature = "alloc")]
 fn log2(x: usize) -> u32 {
     if x <= 1 {
         return 0;
@@ -1303,6 +1307,7 @@ fn log2(x: usize) -> u32 {
 }
 
 #[test]
+#[cfg(feature = "alloc")]
 fn msm_variable_base_test() {
     let points = vec![G1Projective::generator(); 1];
     let scalars = vec![Scalar::from(100u64); 1];
