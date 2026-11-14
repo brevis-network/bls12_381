@@ -494,8 +494,16 @@ impl G2Affine {
         // Updated proof of correctness in https://eprint.iacr.org/2022/352
         //
         // Check that psi(P) == [x] P
-        let p = G2Projective::from(self);
-        p.psi().ct_eq(&p.mul_by_x())
+        cfg_if::cfg_if! {
+            if #[cfg(target_os = "zkvm")] {
+                Choice::from(u8::from(crate::g2_mul::is_torsion_free_with::<
+                    crate::g2_mul::RawG2,
+                >(self)))
+            } else {
+                let p = G2Projective::from(self);
+                p.psi().ct_eq(&p.mul_by_x())
+            }
+        }
     }
 
     /// Returns true if this point is on the curve. This should always return
@@ -937,26 +945,33 @@ impl G2Projective {
         G2Projective::conditional_select(&tmp, self, rhs.is_identity())
     }
 
-    fn multiply(&self, by: &[u8]) -> G2Projective {
-        let mut acc = G2Projective::identity();
+    pub(crate) fn multiply(&self, by: &[u8]) -> G2Projective {
+        // Constant time buys nothing in the zkVM, where the prover knows the inputs.
+        cfg_if::cfg_if! {
+            if #[cfg(target_os = "zkvm")] {
+                self.multiply_vartime(by)
+            } else {
+                let mut acc = G2Projective::identity();
 
-        // This is a simple double-and-add implementation of point
-        // multiplication, moving from most significant to least
-        // significant bit of the scalar.
-        //
-        // We skip the leading bit because it's always unset for Fq
-        // elements.
-        for bit in by
-            .iter()
-            .rev()
-            .flat_map(|byte| (0..8).rev().map(move |i| Choice::from((byte >> i) & 1u8)))
-            .skip(1)
-        {
-            acc = acc.double();
-            acc = G2Projective::conditional_select(&acc, &(acc + self), bit);
+                // This is a simple double-and-add implementation of point
+                // multiplication, moving from most significant to least
+                // significant bit of the scalar.
+                //
+                // We skip the leading bit because it's always unset for Fq
+                // elements.
+                for bit in by
+                    .iter()
+                    .rev()
+                    .flat_map(|byte| (0..8).rev().map(move |i| Choice::from((byte >> i) & 1u8)))
+                    .skip(1)
+                {
+                    acc = acc.double();
+                    acc = G2Projective::conditional_select(&acc, &(acc + self), bit);
+                }
+
+                acc
+            }
         }
-
-        acc
     }
 
     pub fn psi(&self) -> G2Projective {
@@ -2179,6 +2194,14 @@ fn test_clear_cofactor() {
 
     assert!(bool::from(point.is_on_curve()));
     assert!(!bool::from(G2Affine::from(point).is_torsion_free()));
+    assert!(!crate::g2_mul::is_torsion_free_with::<crate::g2_mul::RawG2>(&G2Affine::from(point)));
+    // the variable-time multiplication needs no subgroup, and takes scalars of any length
+    // (top bit clear: `multiply` skips it)
+    let mut long = [0xffu8; 40];
+    long[39] = 0x7f;
+    for by in [&long[..], &[0x5a; 32][..], &[][..]] {
+        assert_eq!(point.multiply_vartime(by), point.multiply(by));
+    }
     let cleared_point = point.clear_cofactor();
 
     assert!(bool::from(cleared_point.is_on_curve()));

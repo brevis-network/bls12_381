@@ -56,6 +56,8 @@ pub mod fp2;
 pub mod g1;
 #[cfg(feature = "groups")]
 mod g2;
+#[cfg(feature = "groups")]
+mod g2_mul;
 
 #[cfg(feature = "groups")]
 pub use g1::{G1Affine, G1Projective};
