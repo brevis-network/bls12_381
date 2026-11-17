@@ -67,7 +67,7 @@ pub(crate) struct RawG2 {
 }
 
 /// `f`'s canonical limbs.
-fn fp_to_canonical(f: &Fp) -> [u64; 6] {
+pub(crate) fn fp_to_canonical(f: &Fp) -> [u64; 6] {
     #[cfg(target_os = "zkvm")]
     {
         let mut f = *f;
@@ -86,7 +86,7 @@ fn fp_to_canonical(f: &Fp) -> [u64; 6] {
 }
 
 /// The field element of canonical limbs.
-fn fp_from_canonical(limbs: &[u64]) -> Fp {
+pub(crate) fn fp_from_canonical(limbs: &[u64]) -> Fp {
     let limbs: [u64; 6] = limbs.try_into().unwrap();
     #[cfg(target_os = "zkvm")]
     {
@@ -105,7 +105,7 @@ fn fp_from_canonical(limbs: &[u64]) -> Fp {
 }
 
 /// `p - a` for a canonical nonzero `a`.
-fn neg_canonical(a: &[u64]) -> [u64; 6] {
+pub(crate) fn neg_canonical(a: &[u64]) -> [u64; 6] {
     let mut out = [0u64; 6];
     let mut borrow = 0u64;
     for i in 0..6 {
@@ -289,6 +289,7 @@ pub(crate) fn multiply_windowed<A: G2Ops>(p: A, by: &[u8]) -> A {
 }
 
 /// Whether `[x] p = psi(p)`, as [`G2Affine::is_torsion_free`] checks it: `[|x|] p = -psi(p)`.
+#[cfg(test)]
 pub(crate) fn is_torsion_free_with<A: G2Ops + PartialEq>(p: &G2Affine) -> bool {
     let point = A::from_affine(p);
     let mut acc = point;
@@ -363,7 +364,7 @@ fn gls_digits(k: &Scalar) -> [u64; 4] {
 }
 
 /// $\psi$ of an affine point, which stays affine: $\psi$ maps $z = 1$ to $z = 1$.
-fn psi_affine(p: &G2Affine) -> G2Affine {
+pub(crate) fn psi_affine(p: &G2Affine) -> G2Affine {
     let q = G2Projective::from(p).psi();
     G2Affine {
         x: q.x,
