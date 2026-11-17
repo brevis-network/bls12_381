@@ -289,6 +289,7 @@ pub(crate) fn multiply_windowed<A: G2Ops>(p: A, by: &[u8]) -> A {
 }
 
 /// Whether `[x] p = psi(p)`, as [`G2Affine::is_torsion_free`] checks it: `[|x|] p = -psi(p)`.
+#[cfg(test)]
 pub(crate) fn is_torsion_free_with<A: G2Ops + PartialEq>(p: &G2Affine) -> bool {
     let point = A::from_affine(p);
     let mut acc = point;
@@ -363,7 +364,7 @@ fn gls_digits(k: &Scalar) -> [u64; 4] {
 }
 
 /// $\psi$ of an affine point, which stays affine: $\psi$ maps $z = 1$ to $z = 1$.
-fn psi_affine(p: &G2Affine) -> G2Affine {
+pub(crate) fn psi_affine(p: &G2Affine) -> G2Affine {
     let q = G2Projective::from(p).psi();
     G2Affine {
         x: q.x,

@@ -67,6 +67,12 @@ impl RawG1 {
         infinity: true,
     };
 
+    /// `x, y` in canonical limbs.
+    #[cfg(target_os = "zkvm")]
+    pub(crate) fn limbs(&self) -> &[u64; 12] {
+        &self.limbs
+    }
+
     fn x(&self) -> &[u64] {
         &self.limbs[..6]
     }

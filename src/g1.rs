@@ -182,7 +182,7 @@ where
 impl_binops_additive!(G1Projective, G1Affine);
 impl_binops_additive_specify_output!(G1Affine, G1Projective, G1Projective);
 
-const B: Fp = Fp::from_raw_unchecked([
+pub(crate) const B: Fp = Fp::from_raw_unchecked([
     0xaa27_0000_000c_fff3,
     0x53cc_0032_fc34_000a,
     0x478f_e97a_6b0a_807f,
@@ -413,9 +413,15 @@ impl G1Affine {
         //
         // Check that endomorphism_p(P) == -[x^2] P
 
-        let minus_x_squared_times_p = G1Projective::from(self).mul_by_x().mul_by_x().neg();
-        let endomorphism_p = endomorphism(self);
-        minus_x_squared_times_p.ct_eq(&G1Projective::from(endomorphism_p))
+        cfg_if::cfg_if! {
+            if #[cfg(target_os = "zkvm")] {
+                Choice::from(u8::from(crate::subgroup::is_torsion_free_raw(self)))
+            } else {
+                let minus_x_squared_times_p = G1Projective::from(self).mul_by_x().mul_by_x().neg();
+                let endomorphism_p = endomorphism(self);
+                minus_x_squared_times_p.ct_eq(&G1Projective::from(endomorphism_p))
+            }
+        }
     }
 
     /// Returns true if this point is on the curve. This should always return

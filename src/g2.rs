@@ -496,9 +496,7 @@ impl G2Affine {
         // Check that psi(P) == [x] P
         cfg_if::cfg_if! {
             if #[cfg(target_os = "zkvm")] {
-                Choice::from(u8::from(crate::g2_mul::is_torsion_free_with::<
-                    crate::g2_mul::RawG2,
-                >(self)))
+                Choice::from(u8::from(crate::subgroup::g2_is_torsion_free_raw(self)))
             } else {
                 let p = G2Projective::from(self);
                 p.psi().ct_eq(&p.mul_by_x())
