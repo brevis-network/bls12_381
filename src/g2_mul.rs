@@ -67,7 +67,7 @@ pub(crate) struct RawG2 {
 }
 
 /// `f`'s canonical limbs.
-fn fp_to_canonical(f: &Fp) -> [u64; 6] {
+pub(crate) fn fp_to_canonical(f: &Fp) -> [u64; 6] {
     #[cfg(target_os = "zkvm")]
     {
         let mut f = *f;
@@ -86,7 +86,7 @@ fn fp_to_canonical(f: &Fp) -> [u64; 6] {
 }
 
 /// The field element of canonical limbs.
-fn fp_from_canonical(limbs: &[u64]) -> Fp {
+pub(crate) fn fp_from_canonical(limbs: &[u64]) -> Fp {
     let limbs: [u64; 6] = limbs.try_into().unwrap();
     #[cfg(target_os = "zkvm")]
     {
@@ -105,7 +105,7 @@ fn fp_from_canonical(limbs: &[u64]) -> Fp {
 }
 
 /// `p - a` for a canonical nonzero `a`.
-fn neg_canonical(a: &[u64]) -> [u64; 6] {
+pub(crate) fn neg_canonical(a: &[u64]) -> [u64; 6] {
     let mut out = [0u64; 6];
     let mut borrow = 0u64;
     for i in 0..6 {

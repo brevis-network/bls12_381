@@ -16,13 +16,11 @@ use group::WnafGroup;
 use crate::fp::Fp;
 use crate::Scalar;
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "alloc")] {
-        extern crate alloc;
-        use alloc::vec;
-        use alloc::vec::Vec;
-    }
-}
+#[cfg(feature = "alloc")]
+extern crate alloc;
+// the zkVM's multiexponentiation lives in `g1_mul`
+#[cfg(all(feature = "alloc", not(target_os = "zkvm")))]
+use alloc::{vec, vec::Vec};
 // Accelerated precompiles for zkvm. Defined directly to prevent circular dependency issues.
 #[cfg(target_os = "zkvm")]
 use pico_patch_libs::{bls12381::decompress_pubkey, syscall_bls12381_add, syscall_bls12381_double};
@@ -963,9 +961,25 @@ impl G1Projective {
     }
 
     /// Performs a Variable Base Multiscalar Multiplication.
+    ///
+    /// In the zkVM every point must be in $\mathbb{G}_1$ (as [`G1Affine::is_torsion_free`]
+    /// checks): the scalars are split with the GLV endomorphism, which acts as a scalar only there.
     #[cfg(feature = "alloc")]
     #[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
     pub fn msm_variable_base(points: &[G1Projective], scalars: &[Scalar]) -> G1Projective {
+        #[cfg(target_os = "zkvm")]
+        {
+            crate::g1_mul::msm_native(points, scalars)
+        }
+        #[cfg(not(target_os = "zkvm"))]
+        {
+            Self::msm_variable_base_pippenger(points, scalars)
+        }
+    }
+
+    /// The generic Pippenger multiscalar multiplication, for any points.
+    #[cfg(all(feature = "alloc", not(target_os = "zkvm")))]
+    fn msm_variable_base_pippenger(points: &[G1Projective], scalars: &[Scalar]) -> G1Projective {
         let c = if scalars.len() < 32 {
             3
         } else {
@@ -1290,13 +1304,13 @@ impl UncompressedEncoding for G1Affine {
     }
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(target_os = "zkvm")))]
 fn ln_without_floats(a: usize) -> usize {
     // log2(a) * ln(2)
     (log2(a) * 69 / 100) as usize
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(target_os = "zkvm")))]
 fn log2(x: usize) -> u32 {
     if x <= 1 {
         return 0;
